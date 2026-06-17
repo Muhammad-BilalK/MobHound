@@ -1,7 +1,3 @@
-# ============================================================================
-# COMPLETE MERGED FILE: int2.py enhanced with int.py scanner & apk reverse
-# ============================================================================
-
 from __future__ import annotations
 
 import sys
