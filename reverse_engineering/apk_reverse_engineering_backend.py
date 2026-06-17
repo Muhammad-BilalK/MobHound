@@ -71,8 +71,14 @@ try:
     APK_REVERSE_APP_DIR   = Path(_re_cfg.paths.tools_dir).parent
     APK_REVERSE_TOOLS_DIR = Path(_re_cfg.paths.tools_dir)
 except ImportError:
-    APK_REVERSE_APP_DIR   = Path.home() / ".mobhound_apk_reverse"
-    APK_REVERSE_TOOLS_DIR = APK_REVERSE_APP_DIR / "tools"
+    try:
+        from mobhound_tools.installer import get_managed_tools_dir
+
+        APK_REVERSE_TOOLS_DIR = get_managed_tools_dir()
+        APK_REVERSE_APP_DIR   = APK_REVERSE_TOOLS_DIR.parent
+    except ImportError:
+        APK_REVERSE_APP_DIR   = Path.cwd()
+        APK_REVERSE_TOOLS_DIR = APK_REVERSE_APP_DIR / ".mobhound_tools"
 
 APK_REVERSE_CACHE_DIR  = APK_REVERSE_APP_DIR / "cache"
 APK_REVERSE_LOGS_DIR   = APK_REVERSE_APP_DIR / "logs"
@@ -647,6 +653,7 @@ class APKReverseDependencyManager:
     """Completely silent dependency installer and manager"""
     
     def __init__(self):
+        _init_app_directories()
         self.system = platform.system()
         self.is_windows = self.system == "Windows"
         self.is_linux = self.system == "Linux"
