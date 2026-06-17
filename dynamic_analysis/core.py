@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from mobhound_tools.installer import ToolInstaller, get_managed_tools_dir
+
 
 class EmulatorConnectionError(RuntimeError):
     """Raised when emulator connection setup fails."""
@@ -319,7 +321,8 @@ class AndroidEmulatorConnector:
     ):
         self.timeout = timeout
         self.auto_download_adb = auto_download_adb
-        self.managed_tools_dir = managed_tools_dir or (Path(__file__).resolve().parent / ".mobhound_tools")
+        self.managed_tools_dir = managed_tools_dir or get_managed_tools_dir()
+        self.tool_installer = ToolInstaller(self.managed_tools_dir)
         self.config_path = self.managed_tools_dir / "settings.json"
         self.adb_path = adb_path or self._find_adb_binary()
 
@@ -381,7 +384,10 @@ class AndroidEmulatorConnector:
                 return str(candidate)
 
         if self.auto_download_adb:
-            return self._download_and_install_adb()
+            result = self.tool_installer.ensure_adb()
+            if result.available and result.path:
+                return result.path
+            raise EmulatorConnectionError(result.error or "Unable to auto-install adb.")
 
         raise EmulatorConnectionError("Unable to locate adb. Enable auto-download or install Android platform-tools.")
 
@@ -714,7 +720,10 @@ class MitmProxyInterceptor:
             return str(managed)
 
         if self.auto_install_mitmproxy:
-            return self._install_mitmproxy()
+            result = self.connector.tool_installer.ensure_python_tool("mitmproxy", "mitmproxy_env", "mitmdump")
+            if result.available and result.path:
+                return result.path
+            raise InterceptionError(result.error or "Failed to auto-install mitmproxy.")
 
         raise InterceptionError("mitmproxy not found. Enable auto-install or install it manually.")
 
@@ -1882,7 +1891,14 @@ Java.perform(function () {
         if not self.auto_install_frida:
             raise InterceptionError(f"Frida tool '{tool_name}' not found. Enable auto-install or install frida-tools.")
 
-        self._install_frida_host_tools()
+        result = self.connector.tool_installer.ensure_python_tool(
+            "frida",
+            "frida_env",
+            tool_name,
+            extra_packages=["frida-tools"],
+        )
+        if not result.available:
+            raise InterceptionError(result.error or f"Failed to auto-install Frida tool '{tool_name}'.")
         managed_hit = self._venv_tool(tool_name)
         if not managed_hit.exists():
             raise InterceptionError(f"Frida tool '{tool_name}' installation completed, but binary was not found.")
