@@ -295,8 +295,9 @@ def load_config(path: Optional[str] = None) -> MobHoundConfig:
       1. path argument
       2. MOBHOUND_CONFIG env var
       3. ./mobhound.json
-      4. ~/.mobhound/config.json
-      5. Default config
+      4. ./mobhound_tools/mobhound.json
+      5. ~/.mobhound/config.json
+      6. Default config
     """
     candidates = []
     if path:
@@ -305,6 +306,7 @@ def load_config(path: Optional[str] = None) -> MobHoundConfig:
     if env_path:
         candidates.append(Path(env_path))
     candidates.append(Path("mobhound.json"))
+    candidates.append(Path(__file__).resolve().parent / "mobhound_tools" / "mobhound.json")
     candidates.append(Path.home() / ".mobhound" / "config.json")
 
     for candidate in candidates:
