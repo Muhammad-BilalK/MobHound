@@ -47,8 +47,8 @@ MobHound installs Python dependencies from `requirements.txt`. External Android/
 Clone the repository:
 
 ```bash
-git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com/Muhammad-BilalK/MobHound.git
+cd path-to-folder/MobHound
 ```
 
 Create and activate a virtual environment.
