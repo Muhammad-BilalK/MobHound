@@ -1,0 +1,30 @@
+# MobHound - Complete Runtime Requirements
+# Install with: pip install -r requirements.txt
+
+# Core GUI
+PySide6>=6.5.0
+
+# Reverse Engineering
+jinja2>=3.1.0
+androguard>=4.0.0
+javalang>=0.13.0
+
+# Scanner / Reporting
+numpy>=1.26.0
+scikit-learn>=1.4.0
+reportlab>=4.0.0
+psutil>=5.9.0
+
+# Dynamic Analysis / Interception
+mitmproxy>=10.0.0
+frida>=15.0.0
+frida-tools>=15.0.0
+Brotli>=1.1.0
+pyOpenSSL>=24.0.0
+kafka-python>=2.0.2
+
+# Notes:
+# - External binaries are managed locally in .mobhound_tools/ when needed:
+#   * JADX
+#   * APKTool
+#   * Android SDK Platform Tools (adb)
