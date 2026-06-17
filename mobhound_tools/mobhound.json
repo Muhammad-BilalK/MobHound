@@ -1,0 +1,88 @@
+{
+  "version": "2.0.0",
+  "app_name": "MobHound",
+  "debug": false,
+  "paths": {
+    "tools_dir": ".mobhound_tools",
+    "frida_dir": ".mobhound_tools/frida",
+    "jadx_bin": "",
+    "apktool_bin": "",
+    "adb_bin": "adb",
+    "reports_dir": "reports",
+    "logs_dir": "logs",
+    "cache_dir": "cache",
+    "ai_models_dir": "ai_models"
+  },
+  "frida": {
+    "port": 27042,
+    "host": "127.0.0.1",
+    "max_retries": 3,
+    "retry_delay": 2.0,
+    "attach_timeout": 10.0,
+    "spawn_timeout": 15.0,
+    "server_startup_wait": 3.0,
+    "auto_install": true,
+    "preferred_abi": "",
+    "scripts": [
+      "frida_detection_bypass.js",
+      "root_emulator_bypass.js",
+      "ssl_pinning_bypass.js",
+      "traffic_tagger.js"
+    ]
+  },
+  "adb": {
+    "adb_path": "adb",
+    "connect_timeout": 10,
+    "command_timeout": 30,
+    "retry_count": 3,
+    "preferred_serial": "",
+    "use_tcp": false,
+    "tcp_host": "",
+    "tcp_port": 5555
+  },
+  "mitmproxy": {
+    "port": 8080,
+    "host": "0.0.0.0",
+    "flow_file": "traffic/captured_flows.jsonl",
+    "cert_dir": ".mobhound_tools/mitmproxy",
+    "upstream_proxy": "",
+    "ignore_hosts": [],
+    "startup_timeout": 8.0
+  },
+  "scanner": {
+    "min_confidence": 0.35,
+    "max_file_size_mb": 5,
+    "max_evidence_items": 10,
+    "enable_static": true,
+    "enable_dynamic": true,
+    "enable_ai": true,
+    "enable_heuristic": true,
+    "enable_signature": true,
+    "enable_malware": true,
+    "report_formats": [
+      "json",
+      "html",
+      "pdf"
+    ],
+    "excluded_paths": [],
+    "severity_threshold": "LOW",
+    "max_findings_per_detector": 0
+  },
+  "ai": {
+    "algorithm": "random_forest",
+    "n_estimators": 300,
+    "auto_bootstrap": true,
+    "auto_retrain": false,
+    "min_train_samples": 20,
+    "fetch_nvd_on_train": false,
+    "confidence_threshold": 0.5
+  },
+  "logging": {
+    "level": "INFO",
+    "to_file": true,
+    "to_console": true,
+    "max_bytes": 10485760,
+    "backup_count": 3,
+    "format": "[%(asctime)s][%(name)s][%(levelname)s] %(message)s"
+  }
+}
