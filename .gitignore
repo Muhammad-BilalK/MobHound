@@ -15,8 +15,6 @@ projects/
 
 # MobHound downloaded/generated tool folders
 .mobhound_test/
-.mobhound_tools/
-.mobhound_tools_*/
 
 # Editor and OS files
 .vscode/
