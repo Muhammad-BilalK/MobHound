@@ -2135,7 +2135,7 @@ class IntercepterPage(BasePage):
         self.devices: List[AndroidDevice] = []
         self.captured_flows: List[Dict[str, Any]] = []
         self.connector = AndroidEmulatorConnector(auto_download_adb=True)
-        self.interceptor = MitmProxyInterceptor(self.connector)
+        self.interceptor: Optional[MitmProxyInterceptor] = None
         self.frida_manager: Optional[FridaManager] = None
         self.frida_ssl_process = None
         self.frida_root_process = None
@@ -2631,8 +2631,9 @@ class IntercepterPage(BasePage):
             proxy_ok, proxy_msg = True, "Proxy will be configured when interception starts."
 
             if self.is_intercepting:
-                backend_ok, backend_msg = self.interceptor.check_backend_health()
-                proxy_ok, proxy_msg = self.interceptor.verify_device_proxy(device.serial)
+                interceptor = self._get_interceptor()
+                backend_ok, backend_msg = interceptor.check_backend_health()
+                proxy_ok, proxy_msg = interceptor.verify_device_proxy(device.serial)
 
             return proxy_ok, proxy_msg, backend_ok, backend_msg
 
@@ -2768,8 +2769,9 @@ class IntercepterPage(BasePage):
             return
 
         def task():
-            cert_path = self.interceptor.generate_ca_certificate()
-            self.interceptor.install_ca_on_device(device.serial, cert_path)
+            interceptor = self._get_interceptor()
+            cert_path = interceptor.generate_ca_certificate()
+            interceptor.install_ca_on_device(device.serial, cert_path)
             return str(cert_path)
 
         def done(result, err):
@@ -2870,6 +2872,11 @@ class IntercepterPage(BasePage):
             self.frida_manager = FridaManager(self.connector, auto_install_frida=True, frida_port=27042)
         return self.frida_manager
 
+    def _get_interceptor(self) -> MitmProxyInterceptor:
+        if self.interceptor is None:
+            self.interceptor = MitmProxyInterceptor(self.connector, auto_install_mitmproxy=True)
+        return self.interceptor
+
     def toggle_interception(self) -> None:
         if self.is_intercepting:
             self.stop_intercepting()
@@ -2881,10 +2888,11 @@ class IntercepterPage(BasePage):
         if not device:
             return
         try:
-            proxy_host = self.interceptor.start(device, callback=self._on_flow_callback)
+            interceptor = self._get_interceptor()
+            proxy_host = interceptor.start(device, callback=self._on_flow_callback)
             self.is_intercepting = True
             self.start_intercept_btn.setText("Stop Interception")
-            self._set_status(f"Interception started on {proxy_host}:{self.interceptor.port}", 5, "Running")
+            self._set_status(f"Interception started on {proxy_host}:{interceptor.port}", 5, "Running")
             self.module_status_changed.emit("Intercepter", "running", device.serial)
             self._set_device_info_value("Interception", "Running")
             self._append_log(f"Interception enabled for {device.serial}.")
@@ -2900,7 +2908,8 @@ class IntercepterPage(BasePage):
         if not self.current_device:
             return
         try:
-            self.interceptor.stop(self.current_device.serial)
+            if self.interceptor is not None:
+                self.interceptor.stop(self.current_device.serial)
             self._stop_all_frida_bypass_processes()
             self.is_intercepting = False
             self.start_intercept_btn.setText("Start Interception")
@@ -7211,5 +7220,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
