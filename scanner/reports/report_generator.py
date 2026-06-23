@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import html as html_module
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
@@ -25,11 +26,11 @@ SEVERITY_COLORS: Dict[str, str] = {
 }
 
 SEVERITY_BADGE: Dict[str, str] = {
-    "CRITICAL": "🔴",
-    "HIGH":     "🟠",
-    "MEDIUM":   "🟡",
-    "LOW":      "🔵",
-    "INFO":     "⚪",
+    "CRITICAL": "ðŸ”´",
+    "HIGH":     "ðŸŸ ",
+    "MEDIUM":   "ðŸŸ¡",
+    "LOW":      "ðŸ”µ",
+    "INFO":     "âšª",
 }
 
 
@@ -40,7 +41,7 @@ class ReportGenerator:
         self._dir = report_dir
         self._dir.mkdir(parents=True, exist_ok=True)
 
-    # ─── Public API ───────────────────────────────────────────
+    # â”€â”€â”€ Public API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def save_json(self, result: ScanResult) -> Path:
         path = self._dir / f"scan_report_{result.scan_id[:8]}.json"
@@ -56,12 +57,13 @@ class ReportGenerator:
         logger.info("HTML report saved to %s", path)
         return path
 
-    # ─── HTML builder ─────────────────────────────────────────
+    # â”€â”€â”€ HTML builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _build_html(self, result: ScanResult) -> str:
         by_sev   = result.findings_by_severity()
         total    = len(result.findings)
         pkg      = result.package_name or result.apk_path
+        malware  = self._malware_summary(result)
 
         counts = {s: len(by_sev[s]) for s in ["CRITICAL","HIGH","MEDIUM","LOW","INFO"]}
 
@@ -69,13 +71,14 @@ class ReportGenerator:
             self._finding_card(f, i + 1)
             for i, f in enumerate(result.findings)
         )
+        malware_html = self._malware_section_html(malware)
 
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>MobHound Scan Report – {pkg}</title>
+<title>MobHound Scan Report â€“ {pkg}</title>
 <style>
   :root {{
     --bg: #0f172a; --surface: #1e293b; --surface2: #334155;
@@ -139,7 +142,7 @@ class ReportGenerator:
 </head>
 <body>
 
-<h1>🐾 MobHound Scan Report</h1>
+<h1>ðŸ¾ MobHound Scan Report</h1>
 <div class="subtitle">
   Package: <strong>{pkg}</strong> &nbsp;|&nbsp;
   Scan ID: {result.scan_id[:8]} &nbsp;|&nbsp;
@@ -149,7 +152,7 @@ class ReportGenerator:
 <!-- AI Banner -->
 <div class="ai-banner">
   <div>
-    <div class="ai-label">🤖 AI Risk: {result.ai_risk_label}</div>
+    <div class="ai-label">ðŸ¤– AI Risk: {result.ai_risk_label}</div>
     <div class="ai-conf">Model confidence: {result.ai_confidence:.0%}</div>
   </div>
   <div style="flex:1"></div>
@@ -169,13 +172,16 @@ class ReportGenerator:
   <div class="stat-card"><div class="stat-num" style="color:#10b981">{result.dynamic_findings_count}</div><div class="stat-label">Dynamic</div></div>
 </div>
 
+<!-- Malware Analysis -->
+{malware_html}
+
 <!-- Filter bar -->
 <div class="filter-bar">
   <button class="filter-btn active" onclick="filterFindings('ALL')">All ({total})</button>
-  <button class="filter-btn" onclick="filterFindings('CRITICAL')">🔴 Critical ({counts["CRITICAL"]})</button>
-  <button class="filter-btn" onclick="filterFindings('HIGH')">🟠 High ({counts["HIGH"]})</button>
-  <button class="filter-btn" onclick="filterFindings('MEDIUM')">🟡 Medium ({counts["MEDIUM"]})</button>
-  <button class="filter-btn" onclick="filterFindings('LOW')">🔵 Low ({counts["LOW"]})</button>
+  <button class="filter-btn" onclick="filterFindings('CRITICAL')">ðŸ”´ Critical ({counts["CRITICAL"]})</button>
+  <button class="filter-btn" onclick="filterFindings('HIGH')">ðŸŸ  High ({counts["HIGH"]})</button>
+  <button class="filter-btn" onclick="filterFindings('MEDIUM')">ðŸŸ¡ Medium ({counts["MEDIUM"]})</button>
+  <button class="filter-btn" onclick="filterFindings('LOW')">ðŸ”µ Low ({counts["LOW"]})</button>
 </div>
 
 <!-- Findings -->
@@ -207,6 +213,92 @@ function filterFindings(severity) {{
 </body>
 </html>"""
 
+    def _malware_summary(self, result: ScanResult) -> Dict[str, object]:
+        malware = (result.metadata or {}).get("malware_analysis", {}) or {}
+        ai_result = malware.get("ai_result", {}) or {}
+        risk_result = malware.get("risk_result", {}) or {}
+        yara_result = malware.get("yara_result", {}) or {}
+        permission_result = malware.get("permission_result", {}) or {}
+        bootstrap = malware.get("bootstrap", {}) or {}
+        flags = (permission_result.get("policy_evaluation") or {}).get("flags", []) or []
+        matched_rules = sorted({
+            match.get("rule", "")
+            for match in yara_result.get("matches", []) or []
+            if match.get("rule")
+        })
+        return {
+            "available": bool(malware),
+            "enabled": bool(malware.get("enabled")),
+            "prediction": ai_result.get("prediction"),
+            "confidence": ai_result.get("confidence"),
+            "risk_score": risk_result.get("final_risk_score"),
+            "risk_level": risk_result.get("risk_level"),
+            "yara_match_count": len(yara_result.get("matches", []) or []),
+            "matched_rules": matched_rules,
+            "permission_flag_count": len(flags),
+            "permission_flags": flags,
+            "top_reasons": ai_result.get("top_reasons", []),
+            "model_kind": ai_result.get("model_kind"),
+            "model_path": bootstrap.get("model_path"),
+            "train_result": bootstrap.get("train_result"),
+            "findings": malware.get("findings", []) or [],
+        }
+
+    def _malware_section_html(self, malware: Dict[str, object]) -> str:
+        if not malware.get("available"):
+            return """
+<div class="ai-banner" style="border-color:var(--border);">
+  <div>
+    <div class="ai-label">🧬 Malware Analysis</div>
+    <div class="ai-conf">This scan did not run the malware-analysis pipeline.</div>
+  </div>
+</div>"""
+
+        flags = malware.get("permission_flags", []) or []
+        reasons = malware.get("top_reasons", []) or []
+        rules = malware.get("matched_rules", []) or []
+        findings = malware.get("findings", []) or []
+
+        def _finding_value(finding, key, default):
+            if isinstance(finding, dict):
+                return finding.get(key, default)
+            return getattr(finding, key, default)
+
+        flag_text = ", ".join(flag.get("flag", "") for flag in flags[:4]) or "none"
+        reason_text = "<br/>".join(reasons[:4]) or "No explanation returned."
+        rules_text = ", ".join(rules[:6]) or "none"
+        findings_text = "".join(
+            f"<li><b>{html_module.escape(str(_finding_value(finding, 'title', 'Malware finding')))}</b>"
+            f" — {html_module.escape(str(_finding_value(finding, 'severity', 'INFO')))}"
+            f" — {html_module.escape(str(_finding_value(finding, 'category', 'Malware')))}</li>"
+            for finding in findings[:8]
+        ) or "<li>None</li>"
+        return f"""
+<div class="ai-banner" style="border-color:var(--accent);">
+  <div>
+    <div class="ai-label">🧬 Malware Analysis: {malware.get('prediction') or 'unknown'}</div>
+    <div class="ai-conf">Confidence: {float(malware.get('confidence') or 0.0):.0%} | Risk: {malware.get('risk_level') or 'Unknown'} ({malware.get('risk_score') if malware.get('risk_score') is not None else 'N/A'}/100)</div>
+  </div>
+  <div style="flex:1"></div>
+  <div style="text-align:right">
+    <div style="font-size:0.85rem;color:var(--text2)">YARA Matches</div>
+    <div style="font-size:1.8rem;font-weight:700">{malware.get('yara_match_count', 0)}</div>
+  </div>
+</div>
+<div class="finding" style="margin-bottom:28px;">
+  <div class="finding-header" style="cursor:default;">
+    <span class="finding-title">Malware details</span>
+    <span class="source-tag">malware</span>
+  </div>
+  <div class="finding-body open" style="display:block;">
+    <div class="section"><div class="section-title">Model</div><p>{malware.get('model_kind') or 'N/A'}</p></div>
+    <div class="section"><div class="section-title">Prediction</div><p>{malware.get('prediction') or 'N/A'} &nbsp;({float(malware.get('confidence') or 0.0):.0%})</p></div>
+    <div class="section"><div class="section-title">Matched YARA Rules</div><p>{rules_text}</p></div>
+    <div class="section"><div class="section-title">Permission Flags</div><p>{flag_text}</p></div>
+    <div class="section"><div class="section-title">Top Reasons</div><p>{reason_text}</p></div>
+    <div class="section"><div class="section-title">Malware Findings</div><ul style="margin-left:18px;">{findings_text}</ul></div>
+  </div>
+</div>"""
     def _finding_card(self, f: Finding, num: int) -> str:
         sev     = f.severity.value
         conf_w  = int(f.confidence * 100)
@@ -258,9 +350,9 @@ function filterFindings(severity) {{
 </div>"""
 
 
-# ─────────────────────────────────────────────────────────────
-# Unified reporter — JSON + HTML + PDF
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Unified reporter â€” JSON + HTML + PDF
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class UnifiedReporter:
     """
