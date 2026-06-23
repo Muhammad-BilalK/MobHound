@@ -52,6 +52,7 @@ from scanner.engines.static_engine      import StaticEngine
 from scanner.engines.dynamic_engine     import DynamicEngine
 from scanner.engines.ai_engine          import AIEngine
 from scanner.engines.correlation_engine import CorrelationEngine
+from scanner.malware.pipeline           import MalwareAnalysisPipeline
 from scanner.reports.report_generator   import ReportGenerator, UnifiedReporter
 
 # ── RE Backend Service integration ──────────────────────────
@@ -329,6 +330,7 @@ class ScannerModule:
         self._static_engine  = StaticEngine()
         self._dynamic_engine = DynamicEngine()
         self._ai_engine      = AIEngine(model_dir=project_dir / "ai_models")
+        self._malware_engine = MalwareAnalysisPipeline(model_dir=project_dir / "ai_models" / "malware")
         self._correlation    = CorrelationEngine()
         self._reporter       = UnifiedReporter(report_dir=project_dir / "reports")
 
@@ -449,9 +451,46 @@ class ScannerModule:
             ai_conf = 0.50
             ai_findings = []
 
+        malware_static_findings: List[Finding] = []
+        malware_ai_findings: List[Finding] = []
+        malware_metadata: Dict[str, Any] = {"enabled": False, "findings": []}
+        if run_malware:
+            logger.info("[4/5] Running V2 malware-analysis pipeline...")
+            malware_result = self._malware_engine.analyze(
+                apk_path=apk_path,
+                static_findings=static_findings,
+                dynamic_findings=dynamic_findings,
+                manifest_data=manifest_data,
+                frida_events=frida_events,
+            )
+            malware_static_findings = malware_result.get("static_findings", [])
+            malware_ai_findings = malware_result.get("ai_findings", [])
+            malware_metadata = {
+                "enabled": True,
+                "bootstrap": malware_result.get("bootstrap", {}),
+                "yara_result": malware_result.get("yara_result", {}),
+                "permission_result": malware_result.get("permission_result", {}),
+                "features": malware_result.get("features", {}),
+                "ai_result": malware_result.get("ai_result", {}),
+                "risk_result": malware_result.get("risk_result", {}),
+                "findings": [
+                    finding.to_dict()
+                    for finding in ((malware_result.get("static_findings", []) or []) + (malware_result.get("ai_findings", []) or []))
+                ],
+            }
+            logger.info(
+                "Malware pipeline complete: %d static findings, %d AI findings, prediction=%s",
+                len(malware_static_findings),
+                len(malware_ai_findings),
+                (malware_metadata.get("ai_result") or {}).get("prediction"),
+            )
+        else:
+            logger.info("[4/5] Malware analysis disabled â€” skipped")
+
         result.feature_vector = fv
         result.ai_risk_label  = ai_label
         result.ai_confidence  = ai_conf
+        result.metadata["malware_analysis"] = malware_metadata
 
         # ── 4. Correlation ──────────────────────────────────
         logger.info("[4/5] Correlating and deduplicating findings...")
