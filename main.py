@@ -5194,12 +5194,55 @@ class ScannerPage(BasePage):
         self.results_table.setColumnCount(5)
         self.results_table.setHorizontalHeaderLabels(["No.","Severity","Description","Category","Confidence"])
         self.results_table.horizontalHeader().setSectionResizeMode(2,QHeaderView.Stretch)
+        self.results_table.horizontalHeader().setDefaultSectionSize(90)
+        self.results_table.verticalHeader().setDefaultSectionSize(22)
         self.results_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.results_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.results_table.cellDoubleClicked.connect(self._show_detail)
-        self.results_table.setStyleSheet("QTableWidget{background:#0f172a;border:1px solid #334155;color:#f1f5f9;gridline-color:#334155;}QTableWidget::item:selected{background:#334155;}QHeaderView::section{background:#1e293b;color:#94a3b8;border:1px solid #334155;padding:6px;font-weight:bold;}")
-        self.results_table.setMinimumHeight(240)
+        self.results_table.setStyleSheet("QTableWidget{background:#0f172a;border:1px solid #334155;color:#f1f5f9;gridline-color:#334155;font-size:8px;}QTableWidget::item:selected{background:#334155;}QHeaderView::section{background:#1e293b;color:#94a3b8;border:1px solid #334155;padding:4px;font-weight:bold;font-size:8px;}")
+        self.results_table.setMinimumHeight(180)
         center_layout.addWidget(self.results_table, stretch=1)
+
+        self._malware_label = QLabel("Malware Analysis")
+        self._malware_label.setFont(QFont("Poppins", 9, QFont.Bold))
+        self._malware_label.setStyleSheet("color:#c4b5fd;margin-top:4px;")
+        center_layout.addWidget(self._malware_label)
+
+        self.malware_frame = QFrame()
+        self.malware_frame.setObjectName("malwareAnalysisFrame")
+        malware_frame_layout = QVBoxLayout(self.malware_frame)
+        malware_frame_layout.setContentsMargins(0, 0, 0, 0)
+        malware_frame_layout.setSpacing(0)
+
+        self.malware_table = QTableWidget()
+        self.malware_table.setColumnCount(6)
+        self.malware_table.setHorizontalHeaderLabels(["Type", "Severity", "Title / Metric", "Category", "Confidence", "Details"])
+        malware_header = self.malware_table.horizontalHeader()
+        malware_header.setStretchLastSection(True)
+        malware_header.setDefaultSectionSize(92)
+        malware_header.setMinimumSectionSize(60)
+        malware_header.setSectionResizeMode(0, QHeaderView.Fixed)
+        malware_header.setSectionResizeMode(1, QHeaderView.Fixed)
+        malware_header.setSectionResizeMode(2, QHeaderView.Fixed)
+        malware_header.setSectionResizeMode(3, QHeaderView.Fixed)
+        malware_header.setSectionResizeMode(4, QHeaderView.Fixed)
+        malware_header.setSectionResizeMode(5, QHeaderView.Stretch)
+        self.malware_table.setColumnWidth(0, 78)
+        self.malware_table.setColumnWidth(1, 86)
+        self.malware_table.setColumnWidth(2, 190)
+        self.malware_table.setColumnWidth(3, 150)
+        self.malware_table.setColumnWidth(4, 102)
+        self.malware_table.verticalHeader().setDefaultSectionSize(22)
+        self.malware_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.malware_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.malware_table.setWordWrap(False)
+        self.malware_table.setTextElideMode(Qt.ElideRight)
+        self.malware_table.setShowGrid(True)
+        self.malware_table.setStyleSheet("QTableWidget{background:#0f172a;border:none;color:#f1f5f9;gridline-color:#334155;font-size:7px;}QTableWidget::item:selected{background:#334155;}QTableWidget::item{padding:2px 4px;}QHeaderView::section{background:#1e293b;color:#94a3b8;border:1px solid #334155;padding:3px;font-weight:bold;font-size:7px;}")
+        self.malware_table.setMinimumHeight(190)
+        malware_frame_layout.addWidget(self.malware_table)
+        self.malware_frame.setStyleSheet("QFrame#malwareAnalysisFrame{background:#0f172a;border:1px solid #475569;border-bottom:3px solid #c4b5fd;border-radius:8px;padding:1px;}")
+        center_layout.addWidget(self.malware_frame, stretch=0)
         main_row.addWidget(center_group, stretch=1)
         layout.addLayout(main_row, stretch=1)
 
@@ -5329,7 +5372,76 @@ class ScannerPage(BasePage):
             self.results_table.setItem(i,2,ti)
             self.results_table.setItem(i,3,ca)
             self.results_table.setItem(i,4,co)
+        self._populate_malware_table(result)
         QMessageBox.information(self, "Scan Complete", f"MobHound scan finished!\n\nTotal Findings: {len(result.findings)}\nAI Risk: {result.ai_risk_label} ({result.ai_confidence:.0%})")
+
+    def _populate_malware_table(self, result):
+        from PySide6.QtGui import QColor
+        malware_meta = (getattr(result, "metadata", {}) or {}).get("malware_analysis", {}) or {}
+        enabled = bool(malware_meta.get("enabled"))
+        ai_result = malware_meta.get("ai_result", {}) or {}
+        risk_result = malware_meta.get("risk_result", {}) or {}
+        yara_result = malware_meta.get("yara_result", {}) or {}
+        permission_result = malware_meta.get("permission_result", {}) or {}
+        bootstrap = malware_meta.get("bootstrap", {}) or {}
+        top_reasons = ai_result.get("top_reasons", []) or []
+        flags = (permission_result.get("policy_evaluation") or {}).get("flags", []) or []
+        matched_rules = sorted({
+            match.get("rule", "")
+            for match in yara_result.get("matches", []) or []
+            if match.get("rule")
+        })
+        malware_findings = list(malware_meta.get("findings", []) or [])
+
+        rows = []
+        rows.append(("Analysis", "INFO", "Enabled", "Malware Analysis", "100%", "Yes" if enabled else "No"))
+        rows.append(("Analysis", "INFO", "Prediction", "Malware Model", f"{float(ai_result.get('confidence', 0.0)):.0%}" if ai_result else "0%", str(ai_result.get("prediction", "N/A"))))
+        rows.append(("Analysis", "INFO", "Risk Score", "Malware Model", "N/A", f"{risk_result.get('risk_level', 'Unknown')} ({risk_result.get('final_risk_score', 'N/A')}/100)"))
+        rows.append(("Analysis", "INFO", "YARA Matches", "Malware Signatures", "N/A", ", ".join(matched_rules[:5]) or "None"))
+        rows.append(("Analysis", "INFO", "Permission Flags", "Permission Abuse", "N/A", "; ".join(flag.get("flag", "") for flag in flags[:3]) or "None"))
+        rows.append(("Analysis", "INFO", "Model Bootstrap", "Training", "N/A", str(bootstrap.get("model_path", "N/A"))))
+        for reason in top_reasons[:3]:
+            rows.append(("Analysis", "INFO", "Top Reason", "Explanation", "N/A", reason))
+
+        for finding in malware_findings:
+            if isinstance(finding, dict):
+                title = str(finding.get("title", "Malware finding"))
+                severity_value = str(finding.get("severity", "INFO"))
+                category = str(finding.get("category", "Malware"))
+                confidence_value = f"{int(float(finding.get('confidence', 0.0)) * 100)}%"
+                details_value = " | ".join((finding.get("evidence", []) or [])[:2]) or str(finding.get("description", ""))[:120]
+            else:
+                severity = getattr(finding, "severity", None)
+                severity_value = severity.value if hasattr(severity, "value") else str(severity or "INFO")
+                title = getattr(finding, "title", "Malware finding")
+                category = getattr(finding, "category", "Malware")
+                confidence_value = f"{int(float(getattr(finding, 'confidence', 0.0)) * 100)}%"
+                details_value = " | ".join((getattr(finding, "evidence", []) or [])[:2]) or str(getattr(finding, "description", ""))[:120]
+            rows.append((
+                "Finding",
+                severity_value,
+                title,
+                category,
+                confidence_value,
+                details_value,
+            ))
+
+        self.malware_table.setRowCount(len(rows))
+        for row, (row_type, severity_text, title, category, confidence, details) in enumerate(rows):
+            items = [
+                QTableWidgetItem(str(row_type)),
+                QTableWidgetItem(str(severity_text)),
+                QTableWidgetItem(str(title)),
+                QTableWidgetItem(str(category)),
+                QTableWidgetItem(str(confidence)),
+                QTableWidgetItem(str(details)),
+            ]
+            if self.current_theme == "Light":
+                for item in items:
+                    item.setForeground(QColor("#111827"))
+            for column, item in enumerate(items):
+                self.malware_table.setItem(row, column, item)
+        self.malware_table.resizeRowsToContents()
     def _on_error(self, error):
         self._stop_btn.setEnabled(False)
         self._scan_btn.setEnabled(True)
@@ -5421,6 +5533,19 @@ class ScannerPage(BasePage):
             "QTableWidget::item:selected{background:#334155;color:#f8fafc;}"
             f"QHeaderView::section{{background:{header_bg};color:{header_text};border:1px solid #334155;padding:6px;font-weight:bold;}}"
         )
+        if hasattr(self, "malware_table"):
+            self.malware_table.setStyleSheet(
+                f"QTableWidget{{background:{inner_bg};border:none;color:{text_color};gridline-color:#334155;font-size:7px;}}"
+                "QTableWidget::item:selected{background:#334155;color:#f8fafc;}"
+                "QTableWidget::item{padding:2px 4px;}"
+                f"QHeaderView::section{{background:{header_bg};color:{header_text};border:1px solid #334155;padding:3px;font-weight:bold;font-size:7px;}}"
+            )
+        if hasattr(self, "malware_frame"):
+            self.malware_frame.setStyleSheet(
+                f"QFrame#malwareAnalysisFrame{{background:{inner_bg};border:1px solid #475569;border-bottom:3px solid {('#c4b5fd' if is_light else '#94a3b8')};border-radius:8px;padding:1px;}}"
+            )
+        if hasattr(self, "_malware_label"):
+            self._malware_label.setStyleSheet(f"color:{'#6A0DAD' if is_light else '#c4b5fd'};margin-top:6px;")
         if self._status_lbl:
             self._status_lbl.setStyleSheet(f"color:{text_color};font-size:11px;")
         if self._progress_label:
@@ -7216,3 +7341,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
