@@ -71,6 +71,7 @@ class PDFReportGenerator:
         story = []
         story += self._cover(result, styles)
         story += self._summary(result, styles)
+        story += self._malware_section(result, styles)
         story += self._findings_section(result, styles)
         story += self._appendix(result, styles)
         doc.build(story)
@@ -89,7 +90,7 @@ class PDFReportGenerator:
         canvas.line(1.8*cm, 1.5*cm, PAGE_W-1.8*cm, 1.5*cm)
         canvas.setFillColor(C_GRAY2)
         canvas.setFont("Helvetica", 7.5)
-        canvas.drawString(1.8*cm, 0.9*cm, "MobHound v2.0 — Android Security Analysis")
+        canvas.drawString(1.8*cm, 0.9*cm, "MobHound v2.0 â€” Android Security Analysis")
         canvas.drawRightString(PAGE_W-1.8*cm, 0.9*cm, f"Page {doc.page}")
         canvas.restoreState()
 
@@ -211,6 +212,85 @@ class PDFReportGenerator:
         story.append(PageBreak())
         return story
 
+    def _malware_section(self, result, styles):
+        malware = (result.metadata or {}).get("malware_analysis", {}) or {}
+        story = [Paragraph("Malware Analysis", styles["h1"]),
+                 HRFlowable(width="100%", thickness=2, color=C_PURPLE, spaceAfter=10)]
+
+        if not malware:
+            story.append(Paragraph("Malware analysis was not run for this scan.", styles["body"]))
+            story.append(PageBreak())
+            return story
+
+        ai_result = malware.get("ai_result", {}) or {}
+        risk_result = malware.get("risk_result", {}) or {}
+        yara_result = malware.get("yara_result", {}) or {}
+        permission_result = malware.get("permission_result", {}) or {}
+        bootstrap = malware.get("bootstrap", {}) or {}
+        flags = (permission_result.get("policy_evaluation") or {}).get("flags", []) or []
+        matched_rules = sorted({
+            match.get("rule", "")
+            for match in yara_result.get("matches", []) or []
+            if match.get("rule")
+        })
+        malware_findings = malware.get("findings", []) or []
+
+        def _finding_value(finding, key, default):
+            if isinstance(finding, dict):
+                return finding.get(key, default)
+            return getattr(finding, key, default)
+
+        summary_rows = [
+            ["Enabled", "Yes" if malware.get("enabled") else "No"],
+            ["Prediction", str(ai_result.get("prediction", "N/A"))],
+            ["Confidence", f"{float(ai_result.get('confidence', 0.0)):.0%}"],
+            ["Risk", f"{risk_result.get('risk_level', 'Unknown')} ({risk_result.get('final_risk_score', 'N/A')}/100)"],
+            ["YARA matches", str(len(yara_result.get("matches", []) or []))],
+            ["Permission flags", str(len(flags))],
+            ["Model kind", str(ai_result.get("model_kind", "N/A"))],
+            ["Model path", str(bootstrap.get("model_path", "N/A"))],
+        ]
+        table = Table(summary_rows, colWidths=[4.2*cm, 11.3*cm])
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), C_PURPLE_BG),
+            ("TEXTCOLOR", (0, 0), (0, -1), C_PURPLE),
+            ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+            ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [C_GRAY_BG, C_WHITE]),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("BOX", (0, 0), (-1, -1), 1, C_GRAY_LINE),
+            ("LINEBELOW", (0, 0), (-1, -2), 0.4, C_GRAY_LINE),
+        ]))
+        story.append(table)
+        story.append(Spacer(1, 0.35*cm))
+
+        if matched_rules:
+            story.append(Paragraph("Matched YARA Rules", styles["h2"]))
+            story.append(Paragraph(", ".join(matched_rules[:8]), styles["body"]))
+        if flags:
+            story.append(Spacer(1, 0.25*cm))
+            story.append(Paragraph("Permission Flags", styles["h2"]))
+            for flag in flags[:5]:
+                story.append(Paragraph(f"• <b>{flag.get('flag')}</b>: {flag.get('detail', '')}", styles["body"]))
+        reasons = ai_result.get("top_reasons", []) or []
+        if reasons:
+            story.append(Spacer(1, 0.25*cm))
+            story.append(Paragraph("Top Reasons", styles["h2"]))
+            for reason in reasons[:5]:
+                story.append(Paragraph(f"• {reason}", styles["body"]))
+        if malware_findings:
+            story.append(Spacer(1, 0.25*cm))
+            story.append(Paragraph("Malware Findings", styles["h2"]))
+            for finding in malware_findings[:8]:
+                title = _finding_value(finding, "title", "Malware finding")
+                severity = _finding_value(finding, "severity", "INFO")
+                category = _finding_value(finding, "category", "Malware")
+                story.append(Paragraph(f"• <b>{title}</b> — {severity} — {category}", styles["body"]))
+        story.append(PageBreak())
+        return story
     def _findings_section(self, result, styles):
         story = [Paragraph("Detailed Findings", styles["h1"]),
                  HRFlowable(width="100%", thickness=2, color=C_PURPLE, spaceAfter=10)]
@@ -257,7 +337,7 @@ class PDFReportGenerator:
         return block
 
     def _appendix(self, result, styles):
-        story = [PageBreak(), Paragraph("Appendix — Scan Metadata", styles["h1"]),
+        story = [PageBreak(), Paragraph("Appendix â€” Scan Metadata", styles["h1"]),
                  HRFlowable(width="100%", thickness=2, color=C_PURPLE, spaceAfter=10)]
         meta = [["Scan ID",result.scan_id],["APK",result.apk_path[:60]],
                 ["Package",result.package_name or "unknown"],
